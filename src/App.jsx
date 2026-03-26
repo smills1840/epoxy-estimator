@@ -82,7 +82,7 @@ function SystemEditor({ system, onSave, onCancel, onDelete, isNew }) {
         {form.materials.length === 0 && <div style={{ textAlign: "center", padding: 32, color: S.textDim, fontSize: 13 }}>No materials yet.</div>}
         {form.materials.map((mat, idx) => (
           <div key={mat.id} style={{ background: S.surface, border: `1px solid ${S.surfaceBorder}`, borderRadius: 10, padding: 16, marginBottom: 10 }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="mat-editor-row" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
               <div style={{ flex: "2 1 180px" }}><Field label="Product Name" value={mat.name} onChange={(v) => upMat(idx, "name", v)} type="text" /></div>
               <div style={{ flex: "0 1 90px" }}><div style={{ fontSize: 10, fontWeight: 600, color: S.textDim, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6 }}>Unit</div><select value={mat.unit} onChange={(e) => upMat(idx, "unit", e.target.value)} style={{ ...inputWrap, ...inputField, padding: "8px 12px", width: "100%", appearance: "none", cursor: "pointer", fontSize: 13 }}>{["gal","lb","oz","qt","each","bag","box","tube","roll","sq ft"].map((u) => <option key={u} value={u} style={{ background: S.card }}>{u}</option>)}</select></div>
               <div style={{ flex: "1 1 120px" }}><Field label="Coverage / Unit" value={mat.coveragePerUnit} onChange={(v) => upMat(idx, "coveragePerUnit", v)} suffix="sq ft" step={10} /></div>
@@ -187,17 +187,18 @@ function Estimator({ systems, settings, set }) {
   const nc = calc.netProfit >= 0 ? S.green : S.red;
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
+      <div className="grid-2col" style={{ marginBottom: 24 }}>
         <div style={cardStyle}><div style={labelStyle}>Epoxy System</div><div style={{ display: "flex", flexDirection: "column", gap: 7 }}>{systemList.map((sys) => (<button key={sys.id} onClick={() => set({ selectedId: sys.id })} style={{ background: selectedId === sys.id ? `linear-gradient(135deg, ${S.amber}18, ${S.amber}08)` : S.surface, border: selectedId === sys.id ? `1.5px solid ${S.amber}` : `1.5px solid ${S.surfaceBorder}`, borderRadius: 10, padding: "11px 14px", textAlign: "left", cursor: "pointer", transition: "all 0.15s" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ fontSize: 13, fontWeight: 600, color: selectedId === sys.id ? S.textBright : S.textMuted }}>{sys.name}</div><div style={{ fontFamily: "'JetBrains Mono'", fontSize: 11, color: S.textDim }}>{fmt(sys.retailPerSqft)}/sqft</div></div><div style={{ fontSize: 10, color: S.textDim, marginTop: 2, lineHeight: 1.3 }}>{sys.description}</div></button>))}</div></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={cardStyle}><div style={labelStyle}>Project Size</div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><input type="number" value={sqft} onChange={(e) => set({ sqft: Math.max(0, parseInt(e.target.value) || 0) })} style={{ fontFamily: "'JetBrains Mono'", fontSize: 34, fontWeight: 600, background: "transparent", border: "none", color: S.textBright, width: 170, outline: "none" }} /><span style={{ fontSize: 15, color: S.textDim, fontWeight: 500 }}>sq ft</span></div><input type="range" min={50} max={10000} step={50} value={sqft} onChange={(e) => set({ sqft: parseInt(e.target.value) })} style={{ width: "100%", marginTop: 10, accentColor: S.amber, height: 4 }} /><div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: S.textFaint, marginTop: 3 }}><span>50</span><span>10,000</span></div></div>
-          <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}><Field label="Waste Factor" value={wastePercent} onChange={(v) => set({ wastePercent: v })} suffix="%" step={1} /><Field label="Mat. Sales Tax" value={salesTaxRate} onChange={(v) => set({ salesTaxRate: v })} suffix="%" step={0.1} /><Field label="Income Tax Rate" value={incomeTaxRate} onChange={(v) => set({ incomeTaxRate: v })} suffix="%" step={1} /><Field label="Retail Price Override" value={retailOverride} onChange={setRO} prefix="$" suffix="/ sq ft" step={0.25} placeholder={system.retailPerSqft.toFixed(2)} highlight /></div>
+          <div style={cardStyle}><div className="grid-2col-fields"><Field label="Waste Factor" value={wastePercent} onChange={(v) => set({ wastePercent: v })} suffix="%" step={1} /><Field label="Mat. Sales Tax" value={salesTaxRate} onChange={(v) => set({ salesTaxRate: v })} suffix="%" step={0.1} /><Field label="Income Tax Rate" value={incomeTaxRate} onChange={(v) => set({ incomeTaxRate: v })} suffix="%" step={1} /><Field label="Retail Price Override" value={retailOverride} onChange={setRO} prefix="$" suffix="/ sq ft" step={0.25} placeholder={system.retailPerSqft.toFixed(2)} highlight /></div></div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.9fr 1fr", gap: 20 }}>
+      <div className="grid-3col">
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", ...labelStyle }}><span>Materials Breakdown</span>{calc.materialLines.some((m) => m.excluded) && <span style={{ fontSize: 10, fontWeight: 500, color: S.amber, textTransform: "none", letterSpacing: "0" }}>{calc.materialLines.filter((m) => m.excluded).length} excluded</span>}</div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}><th style={{ width: 32, padding: "8px 4px" }}></th>{["Material","Cov/Unit","Qty","Unit","Unit Cost","Line Total"].map((h) => <th key={h} style={{ textAlign: h==="Material"?"left":"right", fontSize: 10, fontWeight: 600, color: S.textFaint, textTransform: "uppercase", letterSpacing: "0.8px", padding: "8px 6px" }}>{h}</th>)}</tr></thead>
+          <div className="table-scroll">
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}><thead><tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}><th style={{ width: 32, padding: "8px 4px" }}></th>{["Material","Cov/Unit","Qty","Unit","Unit Cost","Line Total"].map((h) => <th key={h} style={{ textAlign: h==="Material"?"left":"right", fontSize: 10, fontWeight: 600, color: S.textFaint, textTransform: "uppercase", letterSpacing: "0.8px", padding: "8px 6px" }}>{h}</th>)}</tr></thead>
           <tbody>
             {calc.materialLines.map((m, i) => {
               const covVal = getCovOverride(m.id);
@@ -223,6 +224,7 @@ function Estimator({ systems, settings, set }) {
             <CostRow label="Misc" value={misc} onChangeVal={(v) => set({ misc: v })} excluded={excludeMisc} onToggle={() => set((p) => ({ ...p, excludeMisc: !p.excludeMisc }))} colSpan={5} />
           </tbody>
           <tfoot><tr style={{ borderTop: `2px solid ${S.surfaceBorder}` }}><td colSpan={7} style={{ padding: "14px 6px", fontSize: 13, fontWeight: 700, color: S.textBright }}>Total Materials</td><td style={{ padding: "14px 6px", textAlign: "right", fontFamily: "'JetBrains Mono'", fontSize: 16, fontWeight: 700, color: S.amber }}>{fmt(calc.totalMaterialCost)}</td></tr></tfoot></table>
+          </div>
           <div style={{ marginTop: 12, padding: "10px 14px", background: S.surface, borderRadius: 8, display: "flex", justifyContent: "space-between", fontSize: 12, color: S.textDim }}><span>Material cost / sq ft</span><span style={{ fontFamily: "'JetBrains Mono'", color: S.textMuted, fontWeight: 600 }}>{fmt(sqft > 0 ? calc.totalMaterialCost / sqft : 0)}</span></div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -331,16 +333,42 @@ export default function App() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2a2d38; border-radius: 3px; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-3col { display: grid; grid-template-columns: 1.3fr 0.9fr 1fr; gap: 20px; }
+        .grid-2col-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .header-bar { padding: 0 32px; }
+        .header-inner { display: flex; align-items: center; gap: 14px; padding-top: 20px; padding-bottom: 8px; }
+        .header-user { display: flex; align-items: center; gap: 16px; }
+        .header-email { font-size: 12px; color: #6b7084; }
+        .content-area { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .mat-editor-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        @media (max-width: 900px) {
+          .grid-2col { grid-template-columns: 1fr; }
+          .grid-3col { grid-template-columns: 1fr; }
+          .header-bar { padding: 0 16px; }
+          .content-area { padding: 16px; }
+          .header-inner { flex-wrap: wrap; gap: 10px; }
+          .header-user { width: 100%; justify-content: space-between; padding-bottom: 4px; }
+          .header-email { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+        }
+        @media (max-width: 600px) {
+          .grid-2col-fields { grid-template-columns: 1fr; }
+          .content-area { padding: 12px; }
+          .header-bar { padding: 0 12px; }
+          .mat-editor-row { flex-direction: column; align-items: stretch; }
+          .mat-editor-row > div, .mat-editor-row > button { flex: 1 1 100% !important; }
+        }
       `}</style>
-      <div style={{ background: "linear-gradient(135deg, #14161d, #1a1d28)", borderBottom: `1px solid ${S.cardBorder}`, padding: "0 32px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, paddingTop: 20, paddingBottom: 8 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: `linear-gradient(135deg, ${S.amber}, ${S.amberDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: S.bg }}>E</div>
-          <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 19, color: S.textBright, letterSpacing: "-0.5px" }}>Epoxy Floor Estimator</div><div style={{ fontSize: 11, color: S.textDim, marginTop: 1 }}>Material costs · Pricing · Profit analysis</div></div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}><SyncDot status={overallSync} /><div style={{ fontSize: 12, color: S.textDim }}>{session.user.email}</div><button onClick={handleSignOut} style={{ ...btnBase, background: S.surface, color: S.textMuted, padding: "6px 14px", fontSize: 12, border: `1px solid ${S.surfaceBorder}` }}>Sign Out</button></div>
+      <div className="header-bar" style={{ background: "linear-gradient(135deg, #14161d, #1a1d28)", borderBottom: `1px solid ${S.cardBorder}` }}>
+        <div className="header-inner">
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: `linear-gradient(135deg, ${S.amber}, ${S.amberDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: S.bg, flexShrink: 0 }}>E</div>
+          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, fontSize: 19, color: S.textBright, letterSpacing: "-0.5px" }}>Epoxy Floor Estimator</div><div style={{ fontSize: 11, color: S.textDim, marginTop: 1 }}>Material costs · Pricing · Profit analysis</div></div>
+          <div className="header-user"><SyncDot status={overallSync} /><div className="header-email">{session.user.email}</div><button onClick={handleSignOut} style={{ ...btnBase, background: S.surface, color: S.textMuted, padding: "6px 14px", fontSize: 12, border: `1px solid ${S.surfaceBorder}`, flexShrink: 0 }}>Sign Out</button></div>
         </div>
         <div style={{ display: "flex", gap: 0, marginTop: 8 }}>{[{ id: "estimate", label: "Estimator" }, { id: "manage", label: "Manage Systems" }].map((t) => (<button key={t.id} onClick={() => setTab(t.id)} style={{ ...btnBase, background: "transparent", color: tab === t.id ? S.amber : S.textDim, padding: "10px 20px", fontSize: 13, borderRadius: 0, borderBottom: tab === t.id ? `2px solid ${S.amber}` : "2px solid transparent" }}>{t.label}</button>))}</div>
       </div>
-      <div style={{ padding: "24px 32px", maxWidth: 1400, margin: "0 auto" }}>
+      <div className="content-area">
         {tab === "estimate" ? <Estimator systems={systems} settings={settings} set={set} /> : <SystemManager systems={systems} setSystems={setSystems} />}
       </div>
     </div>
