@@ -53,8 +53,8 @@ const DEFAULT_SETTINGS = {
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-const fmt = (n) => n.toLocaleString("en-US",{style:"currency",currency:"USD"});
-const fmtPct = (n) => (n*100).toFixed(1)+"%";
+const fmt = (n) => (n == null || isNaN(n) ? 0 : n).toLocaleString("en-US",{style:"currency",currency:"USD"});
+const fmtPct = (n) => ((n == null || isNaN(n) ? 0 : n)*100).toFixed(1)+"%";
 
 /* ═══ THEME ═══ */
 const DARK = { bg:"#0f1117",card:"#181b24",cardBorder:"#25282f",surface:"#1e212c",surfaceBorder:"#2a2d38",text:"#e2e4e9",textBright:"#f5f5f7",textMuted:"#a0a3b1",textDim:"#6b7084",textFaint:"#4a4d5a",amber:"#f59e0b",amberDark:"#d97706",green:"#10b981",red:"#ef4444",blue:"#3b82f6",scrollThumb:"#2a2d38",headerBg:"linear-gradient(135deg,#14161d,#1a1d28)" };
@@ -268,14 +268,15 @@ function Estimator({systems,settings,set,S:th}) {
     const wm=1+wastePercent/100;
     const ml=system.materials.map(m=>{
       const ex=isME(m.id);const covO=getCov(m.id);
-      const effCov=(covO!==""&&parseFloat(covO)>0)?parseFloat(covO):m.coveragePerUnit;
-      const hasCO=covO!==""&&parseFloat(covO)>0&&parseFloat(covO)!==m.coveragePerUnit;
-      const rawQty=(sqft/effCov)*wm;const qty=Math.ceil(rawQty*10)/10;
-      const unitCost=m.kitSize>0?m.kitPrice/m.kitSize:0;
+      const effCov=(covO!==""&&parseFloat(covO)>0)?parseFloat(covO):(m.coveragePerUnit||200);
+      const hasCO=covO!==""&&parseFloat(covO)>0&&parseFloat(covO)!==(m.coveragePerUnit||200);
+      const rawQty=(sqft/(effCov||200))*wm;const qty=Math.ceil(rawQty*10)/10;
+      const ks=m.kitSize||1; const kp=m.kitPrice||(m.costPerUnit?m.costPerUnit*ks:0);
+      const unitCost=ks>0?kp/ks:(m.costPerUnit||0);
       const cost=ex?0:qty*unitCost;
-      const kitsNeeded=ex?0:Math.ceil(rawQty/m.kitSize);
-      const orderCost=kitsNeeded*m.kitPrice;
-      return{...m,qty:parseFloat(qty.toFixed(1)),cost,excluded:ex,effCov,hasCO,unitCost,kitsNeeded,orderCost};
+      const kitsNeeded=ex?0:Math.ceil(rawQty/ks);
+      const orderCost=kitsNeeded*kp;
+      return{...m,qty:parseFloat(qty.toFixed(1)),cost,excluded:ex,effCov,hasCO,unitCost,kitsNeeded,orderCost,kitSize:ks,kitPrice:kp};
     });
     const bmc=ml.filter(l=>!l.excluded).reduce((s,l)=>s+l.cost,0);
     const sc=excludeSundries?0:(parseFloat(sundries)||0),cc=excludeCrackFiller?0:(parseFloat(crackFiller)||0),mc2=excludeMisc?0:(parseFloat(misc)||0);
