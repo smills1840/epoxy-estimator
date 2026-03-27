@@ -478,21 +478,39 @@ export default function App() {
       .grid-2col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
       .grid-3col{display:grid;grid-template-columns:1.3fr 0.9fr 1fr;gap:20px}
       .grid-2col-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-      .header-bar{padding:0 32px}.content-area{padding:24px 32px;max-width:1400px;margin:0 auto}
+      .header-bar{padding:0 32px}.content-area{padding:24px 32px;max-width:1400px;margin:0 auto;overflow-x:hidden}
       .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
       .mat-editor-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
-      @media(max-width:900px){.grid-2col,.grid-3col{grid-template-columns:1fr}.header-bar{padding:0 16px}.content-area{padding:16px}}
-      @media(max-width:600px){.grid-2col-fields{grid-template-columns:1fr}.content-area{padding:12px}.header-bar{padding:0 12px}.mat-editor-row{flex-direction:column;align-items:stretch}.mat-editor-row>div,.mat-editor-row>button{flex:1 1 100%!important}}
+      .header-top{display:flex;align-items:center;gap:14px;padding-top:20px;padding-bottom:8px}
+      .header-controls{display:flex;align-items:center;gap:12px}
+      .header-email{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+      @media(max-width:900px){
+        .grid-2col,.grid-3col{grid-template-columns:1fr}
+        .grid-2col>*,.grid-3col>*{min-width:0;width:100%}
+        .header-bar{padding:0 16px}
+        .content-area{padding:16px}
+      }
+      @media(max-width:600px){
+        .grid-2col-fields{grid-template-columns:1fr}
+        .content-area{padding:10px}
+        .content-area *{max-width:100%}
+        .header-bar{padding:0 10px}
+        .header-top{flex-wrap:wrap}
+        .header-controls{width:100%;justify-content:space-between;padding:8px 0 4px;border-top:1px solid ${th.surfaceBorder};margin-top:4px}
+        .header-email{display:none}
+        .mat-editor-row{flex-direction:column;align-items:stretch}
+        .mat-editor-row>div,.mat-editor-row>button{flex:1 1 100%!important}
+      }
     `}</style>
     <div className="header-bar" style={{background:th.headerBg,borderBottom:`1px solid ${th.cardBorder}`}}>
-      <div style={{display:"flex",alignItems:"center",gap:14,paddingTop:20,paddingBottom:8,flexWrap:"wrap"}}>
+      <div className="header-top">
         <div style={{width:38,height:38,borderRadius:10,background:`linear-gradient(135deg,${th.amber},${th.amberDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"#0f1117",flexShrink:0}}>E</div>
-        <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:19,color:th.textBright,letterSpacing:"-0.5px"}}>Epoxy Floor Estimator</div><div style={{fontSize:11,color:th.textDim,marginTop:1}}>Materials · Pricing · Profit</div></div>
-        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:17,color:th.textBright,letterSpacing:"-0.5px"}}>Epoxy Floor Estimator</div></div>
+        <div className="header-controls">
           <SyncDot status={sync} S={th}/>
           <button onClick={toggleTheme} style={{...st.btn,background:th.surface,color:th.textMuted,padding:8,border:`1px solid ${th.surfaceBorder}`}} title="Toggle theme">{theme==="dark"?<SunIcon size={14}/>:<MoonIcon size={14}/>}</button>
-          <div style={{fontSize:12,color:th.textDim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{session.user.email}</div>
-          <button onClick={async()=>{await supabase.auth.signOut();}} style={{...st.btn,background:th.surface,color:th.textMuted,padding:"6px 14px",fontSize:12,border:`1px solid ${th.surfaceBorder}`,flexShrink:0}}>Sign Out</button>
+          <div className="header-email" style={{color:th.textDim}}>{session.user.email}</div>
+          <button onClick={async()=>{await supabase.auth.signOut();}} style={{...st.btn,background:th.surface,color:th.textMuted,padding:"6px 12px",fontSize:11,border:`1px solid ${th.surfaceBorder}`,flexShrink:0}}>Sign Out</button>
         </div>
       </div>
       <div style={{display:"flex",gap:0,marginTop:8,overflowX:"auto"}}>{[{id:"estimate",label:"Estimator"},{id:"manage",label:"Manage Systems"},{id:"saved",label:"Saved Estimates"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{...st.btn,background:"transparent",color:tab===t.id?th.amber:th.textDim,padding:"10px 20px",fontSize:13,borderRadius:0,borderBottom:tab===t.id?`2px solid ${th.amber}`:"2px solid transparent",whiteSpace:"nowrap"}}>{t.label}</button>)}</div>
