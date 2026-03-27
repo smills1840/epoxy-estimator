@@ -210,25 +210,16 @@ function SystemManager({systems,setSystems,S:th}) {
 }
 
 /* ═══ SAVED ESTIMATES ═══ */
-function SavedEstimates({userId,onLoad,currentSettings,currentSystems,S:th}) {
+function SavedEstimates({userId,onLoad,S:th}) {
   const st=mkStyles(th);
-  const[estimates,setEstimates]=useState([]);const[loading,setLoading]=useState(true);const[saveName,setSaveName]=useState("");const[custName,setCustName]=useState("");
+  const[estimates,setEstimates]=useState([]);const[loading,setLoading]=useState(true);
   const load=useCallback(async()=>{if(!userId)return;const{data}=await supabase.from("saved_estimates").select("*").eq("user_id",userId).order("created_at",{ascending:false});if(data)setEstimates(data);setLoading(false);},[userId]);
   useEffect(()=>{load();},[load]);
-  const handleSave=async()=>{if(!saveName.trim())return;await supabase.from("saved_estimates").insert({user_id:userId,name:saveName.trim(),customer_name:custName.trim(),settings_data:currentSettings,systems_data:currentSystems});setSaveName("");setCustName("");load();};
   const handleDelete=async(id)=>{if(!confirm("Delete this saved estimate?"))return;await supabase.from("saved_estimates").delete().eq("id",id);load();};
   return <div>
-    <div style={st.label}>Save Current Estimate</div>
-    <div style={{...st.card,marginBottom:24}}>
-      <div className="grid-2col-fields" style={{marginBottom:12}}>
-        <Field label="Estimate Name" value={saveName} onChange={setSaveName} type="text" placeholder="e.g. Smith Garage 2-Car" S={th}/>
-        <Field label="Customer Name" value={custName} onChange={setCustName} type="text" placeholder="e.g. John Smith" S={th}/>
-      </div>
-      <button onClick={handleSave} disabled={!saveName.trim()} style={{...st.btn,background:saveName.trim()?`linear-gradient(135deg,${th.amber},${th.amberDark})`:th.surface,color:saveName.trim()?th.bg:th.textFaint,padding:"10px 20px",fontSize:13,opacity:saveName.trim()?1:0.5}}><SaveIcon size={14}/> Save Estimate</button>
-    </div>
     <div style={st.label}>Saved Estimates ({estimates.length})</div>
     {loading&&<div style={{color:th.textDim,fontSize:13,padding:20,textAlign:"center"}}>Loading...</div>}
-    {!loading&&estimates.length===0&&<div style={{...st.card,textAlign:"center",padding:32,color:th.textDim,fontSize:13}}>No saved estimates yet.</div>}
+    {!loading&&estimates.length===0&&<div style={{...st.card,textAlign:"center",padding:32,color:th.textDim,fontSize:13}}>No saved estimates yet. Save one from the Estimator tab.</div>}
     {estimates.map(est=><div key={est.id} style={{...st.card,marginBottom:10,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:150}}>
         <div style={{fontSize:14,fontWeight:600,color:th.textBright}}>{est.name}</div>
@@ -243,10 +234,103 @@ function SavedEstimates({userId,onLoad,currentSettings,currentSystems,S:th}) {
   </div>;
 }
 
+/* ═══ FINANCIAL FORECAST ═══ */
+function FinancialForecast({userId,S:th}) {
+  const st=mkStyles(th);
+  const[estimates,setEstimates]=useState([]);const[loading,setLoading]=useState(true);
+  const[selected,setSelected]=useState({});
+  useEffect(()=>{if(!userId)return;(async()=>{const{data}=await supabase.from("saved_estimates").select("*").eq("user_id",userId).order("created_at",{ascending:false});if(data)setEstimates(data);setLoading(false);})();},[userId]);
+
+  const toggleEst=(id)=>setSelected(p=>({...p,[id]:!p[id]}));
+  const selectAll=()=>{const allOn=estimates.every(e=>selected[e.id]);const next={};estimates.forEach(e=>{next[e.id]=!allOn;});setSelected(next);};
+
+  // Calculate net profit for each estimate from its saved settings
+  const getNetProfit=(est)=>{
+    try{
+      const s=est.settings_data||{};const sys=(est.systems_data||{})[s.selectedId];
+      if(!sys)return 0;
+      const wm=1+(s.wastePercent||0)/100;
+      const matCost=sys.materials.reduce((sum,m)=>{
+        const key=`${s.selectedId}::${m.id}`;
+        if(s.excludedMats?.[key])return sum;
+        const cov=(s.coverageOverrides||{})[key];
+        const effCov=(cov&&parseFloat(cov)>0)?parseFloat(cov):(m.coveragePerUnit||200);
+        const ks=m.kitSize||1;const kp=m.kitPrice||(m.costPerUnit?m.costPerUnit*ks:0);
+        const uc=ks>0?kp/ks:(m.costPerUnit||0);
+        return sum+((s.sqft||0)/effCov)*wm*uc;
+      },0);
+      const extras=(parseFloat(s.sundries)||0)+(parseFloat(s.crackFiller)||0)+(parseFloat(s.misc)||0);
+      const coveMat=s.coveEnabled?(parseFloat(s.coveLinearFt)||0)*(sys.coveMatCostPerLf||0):0;
+      const totalMat=matCost+extras+coveMat;
+      const labor=(s.technicians||[]).reduce((sum,t)=>sum+(t.enabled?t.hourlyRate*t.manHours:0),0);
+      const totalCost=totalMat+labor;
+      const ro=s.retailOverrides?.[s.selectedId];
+      const er=(ro!==""&&ro!==undefined)?parseFloat(ro):sys.retailPerSqft;
+      const floorRev=(s.sqft||0)*(er||0);
+      const coveRev=s.coveEnabled?(parseFloat(s.coveLinearFt)||0)*(parseFloat(s.covePricePerLf)||0):0;
+      const ecRev=(s.extraCharges||[]).reduce((sum,c)=>sum+(c.enabled?(parseFloat(c.amount)||0):0),0);
+      const totalRev=floorRev+coveRev+ecRev;
+      const gp=totalRev-totalCost;
+      const tax=gp>0?gp*((s.incomeTaxRate||0)/100):0;
+      return gp-tax;
+    }catch{return 0;}
+  };
+
+  const selectedEstimates=estimates.filter(e=>selected[e.id]);
+  const totalNetProfit=selectedEstimates.reduce((s,e)=>s+getNetProfit(e),0);
+  const totalRevenue=selectedEstimates.reduce((s,e)=>{
+    try{const st=e.settings_data||{};const sys=(e.systems_data||{})[st.selectedId];if(!sys)return s;const ro=st.retailOverrides?.[st.selectedId];const er=(ro!==""&&ro!==undefined)?parseFloat(ro):sys.retailPerSqft;const fr=(st.sqft||0)*(er||0);const cr=st.coveEnabled?(parseFloat(st.coveLinearFt)||0)*(parseFloat(st.covePricePerLf)||0):0;const ec=(st.extraCharges||[]).reduce((a,c)=>a+(c.enabled?(parseFloat(c.amount)||0):0),0);return s+fr+cr+ec;}catch{return s;}
+  },0);
+
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
+      <div><h2 style={{fontSize:18,fontWeight:700,color:th.textBright}}>Financial Forecast</h2><p style={{fontSize:12,color:th.textDim,marginTop:4}}>Select estimates to forecast profitability</p></div>
+      <button onClick={selectAll} style={{...st.btn,background:th.surface,color:th.textMuted,padding:"8px 16px",fontSize:12,border:`1px solid ${th.surfaceBorder}`}}>{estimates.every(e=>selected[e.id])&&estimates.length>0?"Deselect All":"Select All"}</button>
+    </div>
+
+    {/* Summary cards */}
+    <div className="grid-2col" style={{marginBottom:24}}>
+      <div style={{...st.card,background:`${th.green}0a`,border:`1px solid ${th.green}33`}}>
+        <div style={{fontSize:10,fontWeight:600,color:th.green,textTransform:"uppercase",letterSpacing:"1px",marginBottom:8}}>Forecasted Net Profit</div>
+        <div style={{fontFamily:"'JetBrains Mono'",fontSize:32,fontWeight:800,color:totalNetProfit>=0?th.green:th.red}}>{fmt(totalNetProfit)}</div>
+        <div style={{fontSize:12,color:th.textDim,marginTop:6}}>{selectedEstimates.length} of {estimates.length} estimate{estimates.length!==1?"s":""} selected</div>
+      </div>
+      <div style={st.card}>
+        <div style={{fontSize:10,fontWeight:600,color:th.textDim,textTransform:"uppercase",letterSpacing:"1px",marginBottom:8}}>Forecasted Revenue</div>
+        <div style={{fontFamily:"'JetBrains Mono'",fontSize:32,fontWeight:800,color:th.textBright}}>{fmt(totalRevenue)}</div>
+        <div style={{fontSize:12,color:th.textDim,marginTop:6}}>Avg per job: {fmt(selectedEstimates.length>0?totalNetProfit/selectedEstimates.length:0)}</div>
+      </div>
+    </div>
+
+    {/* Estimate list */}
+    {loading&&<div style={{color:th.textDim,fontSize:13,padding:20,textAlign:"center"}}>Loading...</div>}
+    {!loading&&estimates.length===0&&<div style={{...st.card,textAlign:"center",padding:32,color:th.textDim,fontSize:13}}>No saved estimates yet. Save one from the Estimator tab.</div>}
+    {estimates.map(est=>{
+      const np=getNetProfit(est);const on=!!selected[est.id];
+      const sqft=est.settings_data?.sqft||0;
+      const sysName=(est.systems_data||{})[est.settings_data?.selectedId]?.name||"—";
+      return<div key={est.id} onClick={()=>toggleEst(est.id)} style={{...st.card,marginBottom:8,display:"flex",alignItems:"center",gap:14,cursor:"pointer",border:`1px solid ${on?th.green+"66":th.cardBorder}`,background:on?`${th.green}08`:th.card,transition:"all 0.15s",flexWrap:"wrap"}}>
+        <Checkbox checked={on} onChange={()=>toggleEst(est.id)} color={th.green} S={th}/>
+        <div style={{flex:1,minWidth:140}}>
+          <div style={{fontSize:14,fontWeight:600,color:th.textBright}}>{est.name}</div>
+          <div style={{fontSize:11,color:th.textDim,marginTop:2}}>{est.customer_name?`${est.customer_name} · `:""}{sysName} · {sqft.toLocaleString()} sqft</div>
+          <div style={{fontSize:11,color:th.textFaint,marginTop:2}}>{new Date(est.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:10,fontWeight:600,color:th.textDim,textTransform:"uppercase",marginBottom:2}}>Net Profit</div>
+          <div style={{fontFamily:"'JetBrains Mono'",fontSize:18,fontWeight:700,color:np>=0?th.green:th.red}}>{fmt(np)}</div>
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 /* ═══ ESTIMATOR ═══ */
-function Estimator({systems,settings,set,S:th}) {
+function Estimator({systems,settings,set,S:th,userId}) {
   const st=mkStyles(th);
   const sysList=Object.values(systems);
+  const[saveName,setSaveName]=useState("");const[custName,setCustName]=useState("");const[saveMsg,setSaveMsg]=useState("");
+  const handleQuickSave=async()=>{if(!saveName.trim()||!userId)return;await supabase.from("saved_estimates").insert({user_id:userId,name:saveName.trim(),customer_name:custName.trim(),settings_data:settings,systems_data:systems});setSaveName("");setCustName("");setSaveMsg("Saved!");setTimeout(()=>setSaveMsg(""),2000);};
   const{selectedId,sqft,wastePercent,salesTaxRate,incomeTaxRate,retailOverrides,coverageOverrides,excludedMats,technicians,sundries,crackFiller,misc,excludeSundries,excludeCrackFiller,excludeMisc,coveEnabled,coveLinearFt,covePricePerLf,extraCharges}=settings;
   useEffect(()=>{if(!systems[selectedId]&&sysList.length>0)set({selectedId:sysList[0].id});},[systems,selectedId,sysList,set]);
   const system=systems[selectedId];
@@ -306,6 +390,14 @@ function Estimator({systems,settings,set,S:th}) {
   const nc=calc.netProfit>=0?th.green:th.red;
 
   return <div>
+    {/* QUICK SAVE BAR */}
+    <div style={{...st.card,marginBottom:20,display:"flex",alignItems:"flex-end",gap:12,flexWrap:"wrap",padding:"16px 22px"}}>
+      <div style={{flex:"2 1 160px"}}><div style={{fontSize:10,fontWeight:600,color:th.textDim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:5}}>Estimate Name</div><div style={st.inputWrap}><input type="text" value={saveName} onChange={e=>setSaveName(e.target.value)} style={{...st.textInput,fontSize:13}} placeholder="e.g. Smith Garage 2-Car"/></div></div>
+      <div style={{flex:"1 1 140px"}}><div style={{fontSize:10,fontWeight:600,color:th.textDim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:5}}>Customer</div><div style={st.inputWrap}><input type="text" value={custName} onChange={e=>setCustName(e.target.value)} style={{...st.textInput,fontSize:13}} placeholder="e.g. John Smith"/></div></div>
+      <button onClick={handleQuickSave} disabled={!saveName.trim()} style={{...st.btn,background:saveName.trim()?`linear-gradient(135deg,${th.green},${th.green}dd)`:`${th.surface}`,color:saveName.trim()?"#fff":th.textFaint,padding:"10px 20px",fontSize:13,flexShrink:0,opacity:saveName.trim()?1:0.5}}><SaveIcon size={14}/> Save Estimate</button>
+      {saveMsg&&<span style={{fontSize:12,color:th.green,fontWeight:600}}>{saveMsg}</span>}
+    </div>
+
     {/* TOP INPUTS */}
     <div className="grid-2col" style={{marginBottom:24}}>
       <div style={st.card}><div style={st.label}>Epoxy System</div>
@@ -434,10 +526,10 @@ function Estimator({systems,settings,set,S:th}) {
         <div style={{background:`${th.green}0a`,border:`1px solid ${th.green}33`,borderRadius:14,padding:22}}>
           <div style={{...st.label,color:th.green}}>Profit Analysis</div>
           {[{l:"Revenue",v:calc.totalRevenue,c:th.text},{l:"Total Cost",v:-calc.totalCost,c:th.red}].map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0"}}><span style={{fontSize:13,color:th.textMuted}}>{r.l}</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:14,color:r.c,fontWeight:500}}>{r.v<0?`(${fmt(Math.abs(r.v))})`:fmt(r.v)}</span></div>)}
-          <div style={{borderTop:`2px solid ${th.green}33`,marginTop:8,paddingTop:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:13,fontWeight:700,color:th.textBright}}>Gross Profit</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:20,fontWeight:700,color:calc.grossProfit>=0?th.green:th.red}}>{fmt(calc.grossProfit)}</span></div>
-          <div style={{marginTop:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:10,color:th.textDim,fontWeight:600,textTransform:"uppercase"}}>Gross Margin</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:13,fontWeight:700,color:mc}}>{fmtPct(calc.grossMargin)}</span></div><div style={{height:7,borderRadius:4,background:th.surface,overflow:"hidden"}}><div style={{height:"100%",borderRadius:4,width:`${Math.max(0,Math.min(100,calc.grossMargin*100))}%`,background:`linear-gradient(90deg,${mc},${mc}cc)`,transition:"width 0.4s"}}/></div></div>
+          <div style={{borderTop:`2px solid ${th.green}33`,marginTop:8,paddingTop:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:12,fontWeight:600,color:th.textDim}}>Gross Profit</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:16,fontWeight:600,color:calc.grossProfit>=0?th.textMuted:th.red}}>{fmt(calc.grossProfit)}</span></div>
+          <div style={{marginTop:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:10,color:th.textDim,fontWeight:600,textTransform:"uppercase"}}>Gross Margin</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:12,fontWeight:600,color:mc}}>{fmtPct(calc.grossMargin)}</span></div><div style={{height:5,borderRadius:3,background:th.surface,overflow:"hidden"}}><div style={{height:"100%",borderRadius:3,width:`${Math.max(0,Math.min(100,calc.grossMargin*100))}%`,background:`linear-gradient(90deg,${mc},${mc}cc)`,transition:"width 0.4s"}}/></div></div>
           <div style={{borderTop:`1px solid ${th.green}22`,marginTop:14,paddingTop:10}}><div style={{display:"flex",justifyContent:"space-between",padding:"7px 0"}}><span style={{fontSize:13,color:th.textMuted}}>Est. Income Tax ({incomeTaxRate}%)</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:14,color:"#f87171",fontWeight:500}}>({fmt(calc.estimatedIncomeTax)})</span></div></div>
-          <div style={{borderTop:`2px solid ${th.green}33`,marginTop:6,paddingTop:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:14,fontWeight:700,color:th.textBright}}>Net Profit</div><div style={{fontSize:10,color:th.textDim,marginTop:1}}>after est. income tax</div></div><span style={{fontFamily:"'JetBrains Mono'",fontSize:22,fontWeight:700,color:nc}}>{fmt(calc.netProfit)}</span></div>
+          <div style={{borderTop:`3px solid ${th.amber}`,marginTop:6,paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center",background:`${th.amber}08`,margin:"0 -22px",padding:"14px 22px",borderRadius:"0 0 14px 14px"}}><div><div style={{fontSize:16,fontWeight:800,color:th.textBright,letterSpacing:"-0.3px"}}>Net Profit</div><div style={{fontSize:10,color:th.textDim,marginTop:2}}>after est. income tax</div></div><span style={{fontFamily:"'JetBrains Mono'",fontSize:26,fontWeight:800,color:nc}}>{fmt(calc.netProfit)}</span></div>
           <div style={{marginTop:10}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:10,color:th.textDim,fontWeight:600,textTransform:"uppercase"}}>Net Margin</span><span style={{fontFamily:"'JetBrains Mono'",fontSize:13,fontWeight:700,color:nc}}>{fmtPct(calc.netMargin)}</span></div><div style={{height:7,borderRadius:4,background:th.surface,overflow:"hidden"}}><div style={{height:"100%",borderRadius:4,width:`${Math.max(0,Math.min(100,calc.netMargin*100))}%`,background:`linear-gradient(90deg,${nc},${nc}cc)`,transition:"width 0.4s"}}/></div></div>
         </div>
 
@@ -513,10 +605,10 @@ export default function App() {
           <button onClick={async()=>{await supabase.auth.signOut();}} style={{...st.btn,background:th.surface,color:th.textMuted,padding:"6px 12px",fontSize:11,border:`1px solid ${th.surfaceBorder}`,flexShrink:0}}>Sign Out</button>
         </div>
       </div>
-      <div style={{display:"flex",gap:0,marginTop:8,overflowX:"auto"}}>{[{id:"estimate",label:"Estimator"},{id:"manage",label:"Manage Systems"},{id:"saved",label:"Saved Estimates"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{...st.btn,background:"transparent",color:tab===t.id?th.amber:th.textDim,padding:"10px 20px",fontSize:13,borderRadius:0,borderBottom:tab===t.id?`2px solid ${th.amber}`:"2px solid transparent",whiteSpace:"nowrap"}}>{t.label}</button>)}</div>
+      <div style={{display:"flex",gap:0,marginTop:8,overflowX:"auto"}}>{[{id:"estimate",label:"Estimator"},{id:"manage",label:"Manage Systems"},{id:"saved",label:"Saved Estimates"},{id:"forecast",label:"Financial Forecast"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{...st.btn,background:"transparent",color:tab===t.id?th.amber:th.textDim,padding:"10px 20px",fontSize:13,borderRadius:0,borderBottom:tab===t.id?`2px solid ${th.amber}`:"2px solid transparent",whiteSpace:"nowrap"}}>{t.label}</button>)}</div>
     </div>
     <div className="content-area">
-      {tab==="estimate"?<Estimator systems={systems} settings={settings} set={set} S={th}/>:tab==="manage"?<SystemManager systems={systems} setSystems={setSystems} S={th}/>:<SavedEstimates userId={session.user.id} onLoad={handleLoadEstimate} currentSettings={settings} currentSystems={systems} S={th}/>}
+      {tab==="estimate"?<Estimator systems={systems} settings={settings} set={set} S={th} userId={session.user.id}/>:tab==="manage"?<SystemManager systems={systems} setSystems={setSystems} S={th}/>:tab==="saved"?<SavedEstimates userId={session.user.id} onLoad={handleLoadEstimate} S={th}/>:<FinancialForecast userId={session.user.id} S={th}/>}
     </div>
   </div>;
 }
