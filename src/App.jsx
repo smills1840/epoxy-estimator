@@ -127,13 +127,41 @@ function useDebouncedSave(table,userId,data,ready,delay=1200) {
 function SyncDot({status,S:th}){const c=status==="saved"?th.green:status==="saving"?th.amber:th.red;const l=status==="saved"?"Saved":status==="saving"?"Saving...":"Error";return<div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:th.textDim}}><div style={{width:6,height:6,borderRadius:3,background:c,transition:"background 0.3s"}}/>{l}</div>;}
 
 /* ═══ SYSTEM EDITOR ═══ */
-function SystemEditor({system,onSave,onCancel,onDelete,isNew,S:th}) {
+function SystemEditor({system,allSystems,onSave,onCancel,onDelete,isNew,S:th}) {
   const st=mkStyles(th);
   const[form,setForm]=useState(()=>JSON.parse(JSON.stringify(system)));
+  const[showPicker,setShowPicker]=useState(false);
+  const[pickerSearch,setPickerSearch]=useState("");
   const up=(k,v)=>setForm(f=>({...f,[k]:v}));
   const upMat=(i,k,v)=>setForm(f=>{const m=[...f.materials];m[i]={...m[i],[k]:v};return{...f,materials:m};});
-  const addMat=()=>setForm(f=>({...f,materials:[...f.materials,{id:uid(),name:"",unit:"gal",kitSize:1,kitPrice:0,coveragePerUnit:200}]}));
+  const addMat=(template)=>{
+    const newMat=template?{...template,id:uid()}:{id:uid(),name:"",unit:"gal",kitSize:1,kitPrice:0,coveragePerUnit:200};
+    setForm(f=>({...f,materials:[...f.materials,newMat]}));
+    setShowPicker(false);setPickerSearch("");
+  };
   const rmMat=i=>setForm(f=>({...f,materials:f.materials.filter((_,j)=>j!==i)}));
+
+  // Build catalog from all materials across all systems (deduped by name)
+  const catalog=useMemo(()=>{
+    const seen=new Map();
+    Object.values(allSystems||{}).forEach(sys=>{
+      (sys.materials||[]).forEach(m=>{
+        if(m.name&&!seen.has(m.name.toLowerCase())){
+          seen.set(m.name.toLowerCase(),{name:m.name,unit:m.unit,kitSize:m.kitSize||1,kitPrice:m.kitPrice||0,coveragePerUnit:m.coveragePerUnit||200});
+        }
+      });
+    });
+    // Also include materials from the form being edited
+    (form.materials||[]).forEach(m=>{
+      if(m.name&&!seen.has(m.name.toLowerCase())){
+        seen.set(m.name.toLowerCase(),{name:m.name,unit:m.unit,kitSize:m.kitSize||1,kitPrice:m.kitPrice||0,coveragePerUnit:m.coveragePerUnit||200});
+      }
+    });
+    return Array.from(seen.values()).sort((a,b)=>a.name.localeCompare(b.name));
+  },[allSystems,form.materials]);
+
+  const filteredCatalog=pickerSearch?catalog.filter(m=>m.name.toLowerCase().includes(pickerSearch.toLowerCase())):catalog;
+
   return <div style={{animation:"fadeIn 0.2s ease"}}>
     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24,flexWrap:"wrap"}}>
       <button onClick={onCancel} style={{...st.btn,background:th.surface,color:th.textMuted,padding:"8px 14px",fontSize:13}}><BackIcon size={14}/> Back</button>
@@ -149,9 +177,36 @@ function SystemEditor({system,onSave,onCancel,onDelete,isNew,S:th}) {
     <div style={st.card}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div style={{...st.label,marginBottom:0}}>Materials ({form.materials.length})</div>
-        <button onClick={addMat} style={{...st.btn,background:`${th.blue}15`,color:th.blue,padding:"6px 14px",fontSize:12,border:`1px solid ${th.blue}40`}}><PlusIcon size={13}/> Add Material</button>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowPicker(true)} style={{...st.btn,background:`${th.blue}15`,color:th.blue,padding:"6px 14px",fontSize:12,border:`1px solid ${th.blue}40`}}><PlusIcon size={13}/> Add Material</button>
+        </div>
       </div>
-      {form.materials.length===0&&<div style={{textAlign:"center",padding:32,color:th.textDim,fontSize:13}}>No materials yet.</div>}
+
+      {/* Material Picker Modal */}
+      {showPicker&&<div style={{background:th.surface,border:`1px solid ${th.amber}44`,borderRadius:12,padding:16,marginBottom:16,animation:"fadeIn 0.15s ease"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontSize:13,fontWeight:600,color:th.textBright}}>Choose a material or create new</div>
+          <button onClick={()=>{setShowPicker(false);setPickerSearch("");}} style={{...st.btn,background:"transparent",color:th.textDim,padding:4,fontSize:18,lineHeight:1}}>×</button>
+        </div>
+        <div style={{...st.inputWrap,marginBottom:12}}>
+          <input type="text" value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder="Search materials..." style={{...st.textInput,fontSize:13}} autoFocus/>
+        </div>
+        <div style={{maxHeight:240,overflowY:"auto",marginBottom:12}}>
+          {filteredCatalog.length===0&&pickerSearch&&<div style={{padding:"12px 0",fontSize:12,color:th.textDim,textAlign:"center"}}>No matches found</div>}
+          {filteredCatalog.map((m,i)=><div key={i} onClick={()=>addMat(m)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",borderRadius:8,cursor:"pointer",marginBottom:2,transition:"background 0.1s",background:"transparent"}} onMouseEnter={e=>e.currentTarget.style.background=`${th.amber}12`} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div>
+              <div style={{fontSize:13,fontWeight:500,color:th.textBright}}>{m.name}</div>
+              <div style={{fontSize:10,color:th.textDim,marginTop:2}}>{m.kitSize} {m.unit} kit @ {fmt(m.kitPrice)} · {m.coveragePerUnit} sqft/unit</div>
+            </div>
+            <div style={{fontSize:11,color:th.amber,fontWeight:600,flexShrink:0}}>+ Add</div>
+          </div>)}
+        </div>
+        <button onClick={()=>addMat(pickerSearch?{name:pickerSearch,unit:"gal",kitSize:1,kitPrice:0,coveragePerUnit:200}:null)} style={{...st.btn,background:`${th.amber}15`,color:th.amber,padding:"10px 16px",fontSize:12,border:`1px solid ${th.amber}40`,width:"100%"}}>
+          <PlusIcon size={13}/> {pickerSearch?`Create "${pickerSearch}" as new material`:"Create blank material"}
+        </button>
+      </div>}
+
+      {form.materials.length===0&&!showPicker&&<div style={{textAlign:"center",padding:32,color:th.textDim,fontSize:13}}>No materials yet. Click "Add Material" to begin.</div>}
       {form.materials.map((mat,idx)=>
         <div key={mat.id} style={{background:th.surface,border:`1px solid ${th.surfaceBorder}`,borderRadius:10,padding:16,marginBottom:10}}>
           <div className="mat-editor-row" style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
@@ -188,7 +243,7 @@ function SystemManager({systems,setSystems,S:th}) {
   const handleNew=()=>{setEditing({id:uid(),name:"",description:"",retailPerSqft:5,coveMatCostPerLf:2.5,materials:[]});setIsNew(true);};
   const handleDup=sys=>{const d={...JSON.parse(JSON.stringify(sys)),id:uid(),name:sys.name+" (Copy)",materials:sys.materials.map(m=>({...m,id:uid()}))};setSystems(p=>({...p,[d.id]:d}));};
   const handleReset=()=>{if(confirm("Reset all systems to defaults?"))setSystems(DEFAULT_SYSTEMS);};
-  if(editing)return<SystemEditor system={editing} onSave={handleSave} onCancel={()=>{setEditing(null);setIsNew(false);}} onDelete={handleDelete} isNew={isNew} S={th}/>;
+  if(editing)return<SystemEditor system={editing} allSystems={systems} onSave={handleSave} onCancel={()=>{setEditing(null);setIsNew(false);}} onDelete={handleDelete} isNew={isNew} S={th}/>;
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
       <div><h2 style={{fontSize:18,fontWeight:700,color:th.textBright}}>Epoxy Systems</h2><p style={{fontSize:12,color:th.textDim,marginTop:4}}>{sysList.length} system{sysList.length!==1?"s":""} — edit materials, pricing, kit sizes</p></div>
